@@ -477,7 +477,7 @@ class Framework implements Base_Log_IAware
         if ($this->_runRoutes() === FALSE) {
             echo $this->error(404);
         }
-        call_user_func($hooks['routing.after'], $this);
+        call_user_func($this->_hooks['routing.after'], $this);
     }
 
     /**
