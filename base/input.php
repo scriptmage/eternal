@@ -4,109 +4,114 @@ namespace eternal;
 
 class Base_Input extends Base_Object
 {
+	
+	const 
+		GET = 1,
+		POST = 2,
+		COOKIE = 4,
+		SESSION = 8;
 
-    private function is_encrypted_data($name)
+    private function isFilterRunning($xssFilter) 
     {
-        switch ($name) {
-            case 'session':
-                return $this->_app->config->secure->encrypt->session;
-                break;
-            case 'cookie':
-                return $this->_app->config->secure->encrypt->cookie;
-                break;
-            default:
-                return NULL;
-        }
+    	return is_null($xssFilter) ? $this->_app->config->secure->protector->xss_filter : $xssFilter;
     }
-
-    public function del($name, $type = 'session')
+    
+    private function getDataArray($data_array, $xssFilter) 
     {
+    	$result = $data_array;
+    	if($this->isFilterRunning($xssFilter)) {
+    		$result = $this->_app->protector->sanitize($data_array); 
+    	}
+    	return $result;
+    }
+    
+    private function cleanName($name) 
+    {
+    	return preg_replace('~[^a-zA-Z0-9_]~', '', $name);
+    }
+    
+    private function getValue($name, $dataArray, $encrypted = false, $xssFilter = NULL) 
+    {
+    	$cleanedName = $this->cleanName($name);
+    	if (isset($dataArray[$cleanedName])) {
+    		$value = $dataArray[$cleanedName];
+    		if ($encrypted) {
+    			$value = $this->_app->decrypt($value);
+    		}
+    		return $this->isFilterRunning($xssFilter) ? $this->_app->protector->sanitize($value) : $value;
+    	}
+    	return NULL;
+    }
+    
+    public function del($name, $type = self::SESSION)
+    {
+    	$cleanedName = $this->cleanName($name);
         switch (strtolower($type)) {
-            case 'get':
-                if (isset($_GET[$name])) {
-                    unset($_GET[$name]);
+            case self::GET:
+                if (isset($_GET[$cleanedName])) {
+                    unset($_GET[$cleanedName]);
                 }
                 break;
-            case 'post':
-                if (isset($_POST[$name])) {
-                    unset($_POST[$name]);
+            case self::POST:
+                if (isset($_POST[$cleanedName])) {
+                    unset($_POST[$cleanedName]);
                 }
                 break;
-            case 'cookie':
-                $this->_app->input->cookie($name, NULL, array('expire' => -1));
+            case self::COOKIE:
+            	if (isset($_COOKIE[$cleanedName])) {
+		            setcookie($cleanedName, FALSE, 1);
+		            unset($_COOKIE[$cleanedName]);
+            	}
                 break;
-            case 'session':
-                if (isset($_SESSION[$name])) {
-                    unset($_SESSION[$name]);
+            case self::SESSION:
+                if (isset($_SESSION[$cleanedName])) {
+                    unset($_SESSION[$cleanedName]);
                 }
         }
     }
 
     public function get($name = NULL, $xssFilter = NULL)
     {
-        $runFilter = is_null($xssFilter) ? $this->_app->config->secure->protector->xss_filter : $xssFilter;
         if (is_null($name)) {
-            return $runFilter ? $this->_app->protector->sanitize($_GET) : $_GET;
+            return $this->getDataArray($_GET);
         }
-        $value = isset($_GET[$name]) ? $_GET[$name] : NULL;
-        if ($runFilter and ! is_null($value)) {
-            $value = $this->_app->protector->sanitize($value);
-        }
-        return $value;
+        
+        return $this->getValue($name, $_GET, false, $xssFilter);
     }
 
     public function post($name = NULL, $xssFilter = NULL)
     {
-        $runFilter = is_null($xssFilter) ? $this->_app->config->secure->protector->xss_filter : $xssFilter;
         if (is_null($name)) {
-            return $runFilter ? $this->_app->protector->sanitize($_POST) : $_POST;
+            return $this->getDataArray($_POST);
         }
-        $value = isset($_POST[$name]) ? $_POST[$name] : NULL;
-        if ($runFilter and ! is_null($value)) {
-            $value = $this->_app->protector->sanitize($value);
-        }
-        return $value;
+        
+        return $this->getValue($name, $_POST, false, $xssFilter);
     }
 
     public function session($name = NULL, $value = NULL, $xssFilter = NULL)
     {
-        $name = preg_replace('~[^a-zA-Z0-9_]~', '', $name);
-        $runFilter = is_null($xssFilter) ? $this->_app->config->secure->protector->xss_filter : $xssFilter;
         if (is_null($name)) {
-            return $runFilter ? $this->_app->protector->sanitize($_SESSION) : $_SESSION;
+            return $this->getDataArray($_SESSION);
         }
         if (is_null($value)) {
-            if (isset($_SESSION[$name])) {
-                $value = $_SESSION[$name];
-                if ($this->is_encrypted_data('session')) {
-                    $value = $this->_app->decrypt($_SESSION[$name]);
-                }
-                return $runFilter ? $this->_app->protector->sanitize($value) : $value;
-            }
-            return NULL;
+        	return $this->getValue($name, $_SESSION, $this->_app->config->secure->encrypt->session, $xssFilter);
         }
         if ($this->_app->config->secure->encrypt->session) {
             $value = $this->_app->encrypt($value);
         }
-        $_SESSION[$name] = $value;
+        
+        $cleanedName = $this->cleanName($name);
+        $_SESSION[$cleanedName] = $value;
     }
 
     public function cookie($name = NULL, $value = NULL, $options = array(), $xssFilter = NULL)
     {
-        $name = preg_replace('~[^a-zA-Z0-9_]~', '', $name);
-        $runFilter = is_null($xssFilter) ? $this->_app->config->secure->protector->xss_filter : $xssFilter;
         if (is_null($name)) {
-            return $runFilter ? $this->_app->protector->sanitize($_COOKIE) : $_COOKIE;
+            return $this->getDataArray($_COOKIE);
         }
+        
         if (is_null($value)) {
-            if (isset($_COOKIE[$name])) {
-                $value = $_COOKIE[$name];
-                if ($this->is_encrypted_data('cookie')) {
-                    $value = $this->_app->decrypt($value);
-                }
-                return $runFilter ? $this->_app->protector->sanitize($value) : $value;
-            }
-            return NULL;
+        	return $this->getValue($name, $_COOKIE, $this->_app->config->secure->encrypt->cookie, $xssFilter);
         }
 
         $options = array_merge(
@@ -119,18 +124,13 @@ class Base_Input extends Base_Object
             ), $options
         );
 
-        if ($options ['expire'] === -1) {
-            setcookie($name, FALSE, 1);
-            unset($_COOKIE[$name]);
-            return TRUE;
-        }
-
         if ($this->_app->config->secure->encrypt->cookie) {
             $value = $this->_app->encrypt($value);
         }
 
+        $cleanedName = $this->cleanName($name);
         return setcookie(
-            $name, $value, $options['expire'], $options['path'], $options['domain'], $options['secure'],
+            $cleanedName, $value, $options['expire'], $options['path'], $options['domain'], $options['secure'],
             $options['httponly']
         );
     }
