@@ -2,6 +2,8 @@
 
 namespace eternal;
 
+use eternal\base\exceptions\IllegalArgumentException;
+
 /**
  * This is a simple Logger implementation that other Loggers can inherit from.
  *
@@ -11,6 +13,12 @@ namespace eternal;
  */
 class Base_Logger extends Base_Object implements Base_Log_Interface
 {
+	
+	private $writer = null;
+	
+	public function set_writer(Base_Log_Writer $writer) {
+		$this->writer = $writer;
+	}
 
     /**
      * System is unusable.
@@ -121,29 +129,11 @@ class Base_Logger extends Base_Object implements Base_Log_Interface
 
     public function log($level, $message, array $context = array())
     {
-        if (($requestUri = $this->_app->server->REQUEST_URI) == '') {
-            $requestUri = "REQUEST_URI_UNKNOWN";
-        }
-        
-        $logfile = sprintf('%s%s.log', $this->_app->config->folders->log, $level);
-
-        $date = date("Y-m-d H:i:s");
-        if ($fd = @fopen($logfile, "a")) {
-            $result = fputcsv(
-                $fd, 
-                array($date, $this->_app->ip(), $requestUri, $this->interpolate($message, $context)), 
-                "\t"
-            );
-            fclose($fd);
-
-            if ($result > 0) {
-                return array(status => true);
-            } else {
-                return array(status => false, message => 'Unable to write to ' . $logfile . '!');
-            }
-        } else {
-            return array(status => false, message => 'Unable to open log ' . $logfile . '!');
-        }
+    	if(is_null($this->writer)) {
+    		throw new IllegalArgumentException("Please, give me a Writer Object");
+    	}
+    	
+        return $this->writer->write($this->_app, $level, $message, $this->interpolate($message, $context));
     }
 
     /**
